@@ -1,12 +1,7 @@
 use starknet::account::Call;
-use starknet::{ContractAddress, get_contract_address};
+use starknet::get_contract_address;
 
 const MAGIC: felt252 = 'read_only_call_panicking';
-
-#[derive(Copy, Drop)]
-pub struct ShieldedDispatcher {
-    pub contract_address: ContractAddress,
-}
 
 #[starknet::interface]
 trait ISafeReadCall<TContractState> {

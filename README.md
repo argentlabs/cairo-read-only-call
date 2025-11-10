@@ -74,11 +74,43 @@ scarb test
 
 The tests demonstrate that `ShieldedDispatcher` prevents state modifications while regular dispatchers don't.
 
-## How It Works
+## How it works
 
 1. `ShieldedDispatcher` wraps calls through `read_only_call_panicking`
 2. The call executes and immediately reverts with a magic value + return data
 3. Safe dispatcher catches the revert and validates the magic value
 4. Return data is deserialized and returned to the caller
 5. Any state changes are rolled back
+
+## Couldn't this just be one contract everyone uses?
+
+You might think: "Why not deploy one shared contract and have everyone call it?" 
+
+We chose the **component pattern** instead because:
+
+- **No address management**: No hardcoded addresses or storage variables needed (No risk of misconfigured addresses pointing to malicious contracts)
+- **Lower gas**: Internal calls instead of library syscalls
+- **Self-contained**: No external contract deployment needed
+- **Simpler**: Works immediately, no dependency management
+
+The tradeoff is slightly larger bytecode, but gas savings on every call more than compensate.
+
+## Comparison with Solidity's `staticcall`
+
+**Starknet does not have a `staticcall` equivalent.** 
+
+In Solidity, `staticcall` enforces read-only semantics at the EVM protocol level, state modifications are rejected immediately. Starknet only has compiler-level hints (`self: @ContractState`), with no runtime enforcement.
+
+| Feature | Solidity `staticcall` | Cairo `ShieldedDispatcher` |
+|---------|----------------------|---------------------------|
+| **Enforcement Level** | EVM protocol (runtime) | Application pattern (revert-based) |
+| **State Protection** | Caller + target both protected | Caller protected, target reverted |
+| **Gas on Attack** | Fails early, minimal gas wasted | Executes fully then reverts, more gas used |
+| **Setup Required** | None, built into EVM | Must embed component in contract |
+| **Trust Model** | Zero trust, enforced by VM | Trust your own contract implementation |
+| **Cross-Contract** | Protects entire call chain | Only protects calling contract's state |
+| **Return Values** | Direct return from call | Extracted from revert data |
+| **Failure Mode** | Immediate rejection | Successful call that gets unwound |
+
+**Key tradeoff**: `staticcall` prevents malicious operations before they execute. `ShieldedDispatcher` lets them run then reverts everything—your state is safe, but attackers can waste more of your gas.
 

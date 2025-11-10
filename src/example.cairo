@@ -1,6 +1,11 @@
 use starknet::ContractAddress;
 use starknet::account::Call;
-use crate::read_only_call::{ShieldedDispatcher, read_only_call, serialize};
+use crate::read_only_call::{read_only_call, serialize};
+
+#[derive(Copy, Drop)]
+pub struct ShieldedDispatcher {
+    pub contract_address: ContractAddress,
+}
 
 // Here is where you add the function that you want to be shielded
 #[generate_trait]
@@ -29,8 +34,8 @@ pub trait IExample<TContractState> {
 pub mod Example {
     use starknet::ContractAddress;
     use crate::erc20::{IErc20Dispatcher, IErc20DispatcherTrait};
-    use crate::read_only_call::{ShieldedDispatcher, safe_read_component};
-    use super::{IExample, ShieldedDispatcherTrait};
+    use crate::read_only_call::safe_read_component;
+    use super::{IExample, ShieldedDispatcher, ShieldedDispatcherTrait};
 
     component!(path: safe_read_component, storage: safe_read, event: SafeReadEvent);
     #[abi(embed_v0)]
