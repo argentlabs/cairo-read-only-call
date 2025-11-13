@@ -58,7 +58,7 @@ pub mod Example {
     fn constructor(ref self: ContractState) {}
 
     #[abi(embed_v0)]
-    impl Erc20Impl of IExample<ContractState> {
+    impl ExampleImpl of IExample<ContractState> {
         fn unshielded_call(
             ref self: ContractState, erc20: ContractAddress, user: ContractAddress,
         ) -> u256 {
@@ -98,7 +98,7 @@ mod tests {
 
     const USER: ContractAddress = 'user'.try_into().unwrap();
     #[test]
-    fn test_do_stuff() {
+    fn test_unshielded_call() {
         let (erc20_dispatcher, example_dispatcher) = setup();
         let value_before = erc20_dispatcher.get_value();
 
@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn test_do_stuff_protected() {
+    fn test_shielded_call() {
         let (erc20_dispatcher, example_dispatcher) = setup();
         let value_before = erc20_dispatcher.get_value();
 
