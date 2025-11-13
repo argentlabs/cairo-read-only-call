@@ -8,45 +8,20 @@ Starknet does not enforce that a function declared as a view (`self: @ContractSt
 
 ## Solution
 
-This library provides a component and pattern for building safe dispatchers that ensure external calls cannot modify state, even if the target contract is malicious.
+This library provides a simple function that wraps the entire logic for building safe dispatchers that ensure external calls cannot modify state, even if the target contract is malicious.
 
-**How it works**: Calls are wrapped in a revert-based pattern. Any state changes are rolled back, while return values are safely extracted and validated.
+**How it works**: Calls are wrapped in a revert-based pattern using a library call to the `SafeReadCall` contract. Any state changes are rolled back, while return values are safely extracted and validated.
 
 ## Quick Start
 
-### 1. Add the component to your contract
-
-```cairo
-use read_only_call::safe_read_component;
-
-#[starknet::contract]
-pub mod YourContract {
-    component!(path: safe_read_component, storage: safe_read, event: SafeReadEvent);
-    
-    #[abi(embed_v0)]
-    impl SafeRead = safe_read_component::SafeReadCallImpl<ContractState>;
-
-    #[storage]
-    struct Storage {
-        #[substorage(v0)]
-        safe_read: safe_read_component::Storage,
-    }
-
-    #[event]
-    #[derive(Drop, starknet::Event)]
-    enum Event {
-        #[flat]
-        SafeReadEvent: safe_read_component::Event,
-    }
-}
-```
-
-### 2. Build your safe dispatcher
+### 1. Build your safe dispatcher
 
 The library provides the building blocks. You implement the dispatcher for your specific interface:
 
 ```cairo
-use read_only_call::read_only_call;
+use starknet::ContractAddress;
+use starknet::account::Call;
+use read_only_call::{read_only_call, serialize};
 
 #[derive(Copy, Drop)]
 pub struct ShieldedDispatcher {
@@ -54,7 +29,8 @@ pub struct ShieldedDispatcher {
 }
 
 // Implement your interface trait on ShieldedDispatcher
-impl MyInterfaceTrait of IMyInterface<ShieldedDispatcher> {
+#[generate_trait]
+impl ShieldedDispatcherTrait of IShieldedErc20 {
     fn balance_of(self: @ShieldedDispatcher, account: ContractAddress) -> u256 {
         let call = Call {
             to: *self.contract_address,
@@ -68,6 +44,14 @@ impl MyInterfaceTrait of IMyInterface<ShieldedDispatcher> {
 
 See `src/example.cairo` for a complete working example.
 
+### 2. Use the shielded dispatcher
+
+In your contract, you can now use the shielded dispatcher to safely call untrusted contracts:
+
+```cairo
+ShieldedDispatcher { contract_address: erc20 }.balance_of(user)
+```
+
 ## Running Tests
 
 ```bash
@@ -79,17 +63,28 @@ The tests in `src/example.cairo` demonstrate the pattern in action: shielded dis
 ## How it works
 
 1. Your shielded dispatcher calls `read_only_call()` with the target contract call
-2. `read_only_call()` invokes `read_only_call_panicking` on your contract (via safe dispatcher)
-3. The external call executes and immediately reverts with a magic value + return data
-4. The revert is caught and validated (checks magic value and `ENTRYPOINT_FAILED`)
-5. Return data is deserialized and returned to the caller
-6. Any state changes are rolled back
+2. `read_only_call()` performs a library call to `SafeReadCall` contract using `ISafeReadCallSafeLibraryDispatcher`
+3. The library call executes `read_only_call_panicking` which makes the external call
+4. The external call executes and immediately reverts with a magic value + return data
+5. The revert is caught and validated (checks magic value and `ENTRYPOINT_FAILED`)
+6. Return data is deserialized and returned to the caller
+7. Any state changes are rolled back
 
-## Why a Component Instead of a Library Contract?
+## Library Call Architecture
 
-We use the **component pattern** because it's the idiomatic way to provide reusable contract logic in Cairo. Components embed directly into your contract, keeping everything self-contained.
+This library uses **library calls** to a deployed `SafeReadCall` contract. The `CLASS_HASH` is hardcoded, and the library call executes in the caller's context without any storage requirements.
 
-A library call approach would work equally well from a technical standpoint—it's primarily an architectural preference.
+**Why library calls instead of a component?**
+
+We initially implemented this as a component, but that approach had significant drawbacks:
+- Added a lot of integration overhead related to component embedding
+- Would have failed if any other contract tried to library call into it
+
+The library call approach solves both issues:
+- No storage overhead in your contract
+- No need to embed a component
+- Works seamlessly when called via library call from any contract
+- Cleaner contract architecture
 
 ## Comparison with Solidity's `staticcall`
 

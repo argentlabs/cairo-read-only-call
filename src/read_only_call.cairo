@@ -1,6 +1,9 @@
+use starknet::ClassHash;
 use starknet::account::Call;
-use starknet::get_contract_address;
 
+const CLASS_HASH: ClassHash = 0x26b9ec6bb1529330f684135b10c6f0691c7c94497e1d0dd95ec0b27e01c2ca6
+    .try_into()
+    .unwrap();
 const MAGIC: felt252 = 'read_only_call_panicking';
 
 #[starknet::interface]
@@ -9,7 +12,7 @@ trait ISafeReadCall<TContractState> {
 }
 
 pub fn read_only_call<T, +Serde<T>, +Drop<T>>(call: Call) -> T {
-    let inner_call_result = ISafeReadCallSafeDispatcher { contract_address: get_contract_address() }
+    let inner_call_result = ISafeReadCallSafeLibraryDispatcher { class_hash: CLASS_HASH }
         .read_only_call_panicking(call);
     let error = inner_call_result.expect_err('ROC: didnt panic');
     let mut error_span = error.span();
@@ -28,23 +31,19 @@ pub fn read_only_call<T, +Serde<T>, +Drop<T>>(call: Call) -> T {
     }
 }
 
-#[starknet::component]
-pub mod safe_read_component {
+#[starknet::contract]
+pub mod SafeReadCall {
     use alexandria_data_structures::array_ext::ArrayTraitExt;
     use starknet::account::Call;
     use starknet::syscalls::call_contract_syscall;
-    use starknet::{get_caller_address, get_contract_address};
     use super::{ISafeReadCall, MAGIC, panic_with};
 
     #[storage]
     pub struct Storage {}
 
-    #[embeddable_as(SafeReadCallImpl)]
-    impl ImplSafeReadCall<
-        TContractState, +HasComponent<TContractState>,
-    > of ISafeReadCall<ComponentState<TContractState>> {
-        fn read_only_call_panicking(self: @ComponentState<TContractState>, call: Call) {
-            assert(get_caller_address() == get_contract_address(), 'Read-only call: only self');
+    #[abi(embed_v0)]
+    impl SafeReadCallImpl of ISafeReadCall<ContractState> {
+        fn read_only_call_panicking(self: @ContractState, call: Call) {
             match call_contract_syscall(call.to, call.selector, call.calldata) {
                 Ok(result) => {
                     let mut final_panic = array![MAGIC];
@@ -85,3 +84,19 @@ pub fn panic_with(prefix_message: felt252, original_error: Array<felt252>) -> co
     panic(final_error)
 }
 
+
+#[cfg(test)]
+mod tests {
+    use snforge_std::{DeclareResultTrait, declare};
+    use super::*;
+
+    #[test]
+    fn test_class_hash() {
+        let class_hash = *(declare("SafeReadCall")
+            .expect('Failed to declare SafeReadCall')
+            .contract_class()
+            .class_hash);
+        println!("class_hash: 0x{:x}", class_hash);
+        assert_eq!(class_hash, CLASS_HASH);
+    }
+}

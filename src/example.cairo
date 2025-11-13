@@ -3,13 +3,13 @@ use starknet::account::Call;
 use crate::read_only_call::{read_only_call, serialize};
 
 #[derive(Copy, Drop)]
-pub struct ShieldedDispatcher {
-    pub contract_address: ContractAddress,
+struct ShieldedDispatcher {
+    contract_address: ContractAddress,
 }
 
 // Here is where you add the function that you want to be shielded
 #[generate_trait]
-pub impl ShieldedDispatcherTrait of IShieldedErc20 {
+impl ShieldedErc20DispatcherTrait of IShieldedErc20 {
     fn balance_of(self: @ShieldedDispatcher, account: ContractAddress) -> u256 {
         let call = Call {
             to: *self.contract_address,
@@ -31,28 +31,18 @@ pub trait IExample<TContractState> {
 }
 
 #[starknet::contract]
-pub mod Example {
+mod Example {
     use starknet::ContractAddress;
     use crate::erc20::{IErc20Dispatcher, IErc20DispatcherTrait};
-    use crate::read_only_call::safe_read_component;
-    use super::{IExample, ShieldedDispatcher, ShieldedDispatcherTrait};
+    use super::{IExample, ShieldedDispatcher, ShieldedErc20DispatcherTrait};
 
-    component!(path: safe_read_component, storage: safe_read, event: SafeReadEvent);
-    #[abi(embed_v0)]
-    impl SafeRead = safe_read_component::SafeReadCallImpl<ContractState>;
 
     #[storage]
-    struct Storage {
-        #[substorage(v0)]
-        safe_read: safe_read_component::Storage,
-    }
+    struct Storage {}
 
     #[event]
     #[derive(Drop, starknet::Event)]
-    enum Event {
-        #[flat]
-        SafeReadEvent: safe_read_component::Event,
-    }
+    enum Event {}
 
     #[constructor]
     fn constructor(ref self: ContractState) {}
@@ -80,6 +70,8 @@ mod tests {
     use super::*;
 
     fn setup() -> (IErc20Dispatcher, IExampleDispatcher) {
+        // Declare the SafeReadCall contract to ensure it is deployed
+        declare("SafeReadCall").expect('Failed to declare SafeReadCall');
         let (erc20, _) = declare("Erc20")
             .expect('Failed to declare Erc20')
             .contract_class()
